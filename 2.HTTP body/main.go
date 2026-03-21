@@ -6,34 +6,56 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
-	"sync/atomic"
 )
 
-var money = atomic.Int64{}
-var bank = atomic.Int64{}
+var money = 1000
+var bank = 0
 var mtx = sync.Mutex{}
 
 func payHandler(w http.ResponseWriter, r *http.Request) {
 	httpRequestBody, err := io.ReadAll(r.Body)
-	if err != nil {
-		fmt.Println("failed reading from http body:", err)
-		return
-	}
-	httpRequest := string(httpRequestBody)
-	paymentAmount, err := strconv.Atoi(httpRequest)
-	if err != nil {
-		fmt.Println("failed convert str into int:", err)
-		return
-	}
-	mtx.Lock()
-	if money.Load()-int64(paymentAmount) >= 0 {
-		money.Add(-int64(paymentAmount))
-		fmt.Println("Оплата прошла успешно:", money.Load())
-	} else {
-		fmt.Println("Не хвататет денег для проведения оплаты!")
-	}
-	mtx.Unlock()
 
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		msg := "failed reading from http body:" + err.Error()
+		fmt.Println(msg)
+		_, err := w.Write([]byte(msg))
+		if err != nil {
+			fmt.Println("failed send request:", err)
+		}
+		return
+	}
+
+	paymentAmount, err := strconv.Atoi(string(httpRequestBody))
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		msg := "failed convert str into int:" + err.Error()
+		fmt.Println(msg)
+		_, err := w.Write([]byte(msg))
+		if err != nil {
+			fmt.Println("failed send request:", err)
+		}
+		return
+	}
+
+	mtx.Lock()
+	defer mtx.Unlock()
+
+	if money-paymentAmount >= 0 {
+		money -= paymentAmount
+		msg := "Оплата прошла успешно:" + strconv.Itoa(money)
+		fmt.Println(msg)
+		_, err := w.Write([]byte(msg))
+		if err != nil {
+			fmt.Println("failed send request:", err)
+		}
+	} else {
+		_, err := w.Write([]byte("Не хватает денег для проведения оплаты!"))
+		if err != nil {
+
+			fmt.Println("Не хватает денег для проведения оплаты!")
+		}
+	}
 }
 
 func saveHandler(w http.ResponseWriter, r *http.Request) {
@@ -43,31 +65,28 @@ func saveHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpRequest := string(httpRequestBody)
-
-	saveAmount, err := strconv.Atoi(httpRequest)
+	saveAmount, err := strconv.Atoi(string(httpRequestBody))
 	if err != nil {
 		fmt.Println("failed convert str into int:", err)
 		return
 	}
 
 	mtx.Lock()
-	if money.Load() >= int64(saveAmount) {
+	defer mtx.Unlock()
 
-		money.Add(-int64(saveAmount))
-		bank.Add(int64(saveAmount))
+	if money >= saveAmount {
+		money -= saveAmount
+		bank += saveAmount
 
-		fmt.Println("Новое значение переменной money:", money.Load())
-
-		fmt.Println("Новое значение переменной bank:", bank.Load())
+		fmt.Println("Новое значение переменной money:", money)
+		fmt.Println("Новое значение переменной bank:", bank)
 	} else {
-		fmt.Println("Не хвататет денег чтобы положить в копилку!")
+		fmt.Println("Не хватает денег чтобы положить в копилку!")
 	}
-	mtx.Unlock()
 }
 
 func main() {
-	money.Add(1000)
+
 	http.HandleFunc("/pay", payHandler)
 	http.HandleFunc("/save", saveHandler)
 
@@ -75,5 +94,4 @@ func main() {
 	if err != nil {
 		fmt.Println("Произошла ошибка сервера:", err.Error())
 	}
-
 }
