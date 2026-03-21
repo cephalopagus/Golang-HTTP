@@ -46,6 +46,7 @@ func main() {
 	http.HandleFunc("/default", handler)
 	http.HandleFunc("/pay", payHandler)
 	http.HandleFunc("/cancel", cancelHandler)
+	http.HandleFunc("/cancel", cancelHandler)
 
 	fmt.Println("Запускаю сервер")
 	err := http.ListenAndServe(":9091", nil)
